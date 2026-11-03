@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lifeline Hospital - Front desk system</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="rail">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div><strong>Lifeline Hospital</strong><small>Front desk system</small></div>
+    </div>
+    <nav aria-label="Main">
+      <a href="#schedule" data-view="schedule">Schedule</a>
+      <a href="#patients" data-view="patients">Patients</a>
+      <a href="#doctors" data-view="doctors">Doctors</a>
+      <a href="#bills" data-view="bills">Bills</a>
+    </nav>
+    <p class="rail-foot"><span class="dot" id="statusDot"></span><span id="statusText">Connecting to server</span></p>
+  </aside>
+
+  <main>
+
+    <!-- ===================== Schedule ===================== -->
+    <section id="view-schedule" class="view">
+      <header class="view-head">
+        <div>
+          <h1>Schedule</h1>
+          <p class="lede" id="todayLabel"></p>
+        </div>
+        <button class="btn primary" id="openBooking" type="button">Book appointment</button>
+      </header>
+
+      <dl class="figures" id="figures"></dl>
+
+      <div class="board-head">
+        <h2>Doctors' day board</h2>
+        <div class="date-nav">
+          <button class="btn" id="prevDay" type="button" aria-label="Previous day">&lsaquo;</button>
+          <input type="date" id="boardDate" aria-label="Board date">
+          <button class="btn" id="nextDay" type="button" aria-label="Next day">&rsaquo;</button>
+          <button class="btn" id="todayBtn" type="button">Today</button>
+        </div>
+      </div>
+      <div class="board-wrap"><table class="board" id="board"></table></div>
+
+      <h2 class="section-title" id="listTitle"></h2>
+      <div class="table-wrap" id="apptList"></div>
+    </section>
+
+    <!-- ===================== Patients ===================== -->
+    <section id="view-patients" class="view" hidden>
+      <header class="view-head">
+        <div>
+          <h1>Patients</h1>
+          <p class="lede">Register patients, admit them to a ward, and bill them when treatment ends. Ward stays are charged per day, with a minimum of one day.</p>
+        </div>
+      </header>
+      <form class="panel reg-form" id="patientForm" novalidate>
+        <h2>Register patient</h2>
+        <div class="reg-grid">
+          <label>Full name
+            <input name="name" type="text" maxlength="60" placeholder="e.g. Priya Sharma" autocomplete="off">
+          </label>
+          <label>Age
+            <input name="age" type="text" inputmode="numeric" maxlength="3" placeholder="e.g. 34" autocomplete="off">
+          </label>
+          <label>Gender
+            <select name="gender">
+              <option value="">Choose</option>
+              <option>Female</option>
+              <option>Male</option>
+              <option>Other</option>
+            </select>
+          </label>
+          <label>Phone number
+            <input name="phone" type="text" inputmode="numeric" maxlength="10" placeholder="10 digits" autocomplete="off">
+          </label>
+          <label>Reason for visit
+            <input name="condition" type="text" maxlength="80" placeholder="e.g. Persistent cough" autocomplete="off">
+          </label>
+          <button class="btn primary" type="submit">Register patient</button>
+        </div>
+        <p class="form-error" id="patientError" role="alert"></p>
+      </form>
+      <div class="table-wrap" id="patientTable"></div>
+    </section>
+
+    <!-- ===================== Doctors ===================== -->
+    <section id="view-doctors" class="view" hidden>
+      <header class="view-head">
+        <div>
+          <h1>Doctors</h1>
+          <p class="lede">Consultation hours run 09:00 to 17:00, with the 13:00 hour kept free for lunch.</p>
+        </div>
+      </header>
+      <div class="table-wrap" id="doctorTable"></div>
+    </section>
+
+    <!-- ===================== Bills ===================== -->
+    <section id="view-bills" class="view" hidden>
+      <header class="view-head">
+        <div>
+          <h1>Bills</h1>
+          <p class="lede">Every bill issued since the server started. Bills are kept in memory and clear when the server restarts.</p>
+        </div>
+      </header>
+      <div class="table-wrap" id="billTable"></div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Book appointment -->
+<dialog id="bookDialog" aria-labelledby="bookTitle">
+  <form id="bookForm" novalidate>
+    <h2 id="bookTitle">Book appointment</h2>
+    <label>Patient <select name="patientId"></select></label>
+    <label>Doctor <select name="doctorId"></select></label>
+    <div class="row2">
+      <label>Date <input name="date" type="date"></label>
+      <label>Time <select name="time"></select></label>
+    </div>
+    <p class="form-error" id="bookError" role="alert"></p>
+    <div class="dialog-actions">
+      <button class="btn" type="button" data-close>Close</button>
+      <button class="btn primary" type="submit">Book appointment</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Receipt -->
+<dialog id="receiptDialog" class="receipt" aria-labelledby="receiptTitle">
+  <h2 id="receiptTitle">Receipt</h2>
+  <div id="receiptBody"></div>
+  <div class="dialog-actions">
+    <button class="btn" type="button" onclick="window.print()">Print</button>
+    <button class="btn primary" type="button" data-close>Done</button>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ---------- helpers ---------- */
+const $ = (sel) => document.querySelector(sel);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
+  (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const inr = (n) => new Intl.NumberFormat('en-IN',
+  { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n);
+const fmtDate = (iso, opts) => new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', opts);
+const SHORT = { day: 'numeric', month: 'short' };
+const FULL = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+const toISO = (d) => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'),
+  String(d.getDate()).padStart(2, '0')].join('-');
+const cap = (s) => s.charAt(0) + s.slice(1).toLowerCase();
+
+/* ---------- talking to the Java server ---------- */
+const api = {
+  async get(path) {
+    const res = await fetch(path);
+    if (!res.ok) throw new Error('Could not load ' + path);
+    return res.json();
+  },
+  async post(path, data) {
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(data)
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'The request failed.');
+    return json;
+  }
+};
+
+const state = { dash: { slots: [], today: '' }, doctors: [], patients: [], appointments: [], bills: [], date: '' };
+
+async function load() {
+  try {
+    const [dash, doctors, patients, appointments, bills] = await Promise.all(
+      ['dashboard', 'doctors', 'patients', 'appointments', 'bills'].map((p) => api.get('/api/' + p)));
+    if (!state.date) state.date = dash.today;
+    Object.assign(state, { dash, doctors, patients, appointments, bills });
+    setOnline(true);
+    render();
+  } catch (err) {
+    setOnline(false);
+  }
+}
+
+function setOnline(on) {
+  $('#statusDot').classList.toggle('off', !on);
+  $('#statusText').textContent = on ? 'Server connected' : 'Server not reachable';
+}
+
+/* Runs a POST action, shows the server's message, and refreshes the data. */
+async function act(path, data) {
+  try {
+    const res = await api.post(path, data);
+    toast(res.message, 'ok');
+    await load();
+    return res;
+  } catch (err) {
+    toast(err.message, 'error');
+    return null;
+  }
+}
+
+let toastTimer;
+function toast(message, kind) {
+  const t = $('#toast');
+  t.textContent = message;
+  t.className = 'toast show ' + (kind === 'error' ? 'error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = 'toast'; }, kind === 'error' ? 6000 : 3500);
+}
+
+/* ---------- rendering ---------- */
+function render() {
+  renderSchedule();
+  renderPatients();
+  renderDoctors();
+  renderBills();
+}
+
+function renderSchedule() {
+  const d = state.dash;
+  $('#todayLabel').textContent = fmtDate(d.today, FULL);
+  $('#figures').innerHTML = [
+    ['Registered patients', d.patients],
+    ['Admitted now', d.admitted],
+    ['Appointments today', d.appointmentsToday],
+    ['Billed so far', inr(d.revenue)]
+  ].map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('');
+
+  $('#boardDate').value = state.date;
+
+  // Board: one row per doctor, one column per slot.
+  const active = state.appointments.filter((a) => a.date === state.date && a.status !== 'CANCELLED');
+  const head = '<thead><tr><th scope="col">Doctor</th>' +
+    d.slots.map((t) => `<th scope="col">${t}</th>`).join('') + '</tr></thead>';
+  const rows = state.doctors.map((doc) => {
+    const cells = d.slots.map((t) => {
+      const a = active.find((x) => x.doctorId === doc.id && x.time === t);
+      if (!a) {
+        return `<td><button class="slot" type="button" data-act="slot" data-doctor="${doc.id}" data-time="${t}"
+                  aria-label="Book ${esc(doc.name)} at ${t}">+</button></td>`;
+      }
+      const done = a.status === 'COMPLETED';
+      return `<td><div class="slot ${done ? 'done' : 'booked'}" title="${esc(a.patientName)} with ${esc(doc.name)} at ${t}">
+                <span class="s-name">${esc(a.patientName)}</span>
+                <span class="s-state">${done ? 'Done' : 'Booked'}</span></div></td>`;
+    }).join('');
+    return `<tr><th scope="row">${esc(doc.name)}<span>${esc(doc.specialization)}</span></th>${cells}</tr>`;
+  }).join('');
+  $('#board').innerHTML = head + '<tbody>' + rows + '</tbody>';
+
+  // Appointment list for the chosen day.
+  const isToday = state.date === d.today;
+  $('#listTitle').textContent = 'Appointments on ' + fmtDate(state.date, SHORT) + (isToday ? ' (today)' : '');
+  const list = state.appointments.filter((a) => a.date === state.date);
+  if (!list.length) {
+    $('#apptList').innerHTML = '<p class="empty">No appointments on this day. Select a free slot on the board to book one.</p>';
+    return;
+  }
+  $('#apptList').innerHTML = `<table class="data"><thead><tr>
+      <th>Time</th><th>Patient</th><th>Doctor</th><th>Status</th><th></th></tr></thead><tbody>` +
+    list.map((a) => {
+      let actions = '';
+      if (a.status === 'BOOKED') {
+        if (a.date <= d.today) actions += `<button class="btn small primary" data-act="complete" data-id="${a.id}">Mark completed</button>`;
+        actions += `<button class="btn small danger" data-act="cancel" data-id="${a.id}">Cancel</button>`;
+      }
+      return `<tr><td>${a.time}</td>
+        <td>${esc(a.patientName)}<span class="sub">Patient ID ${a.patientId}</span></td>
+        <td>${esc(a.doctorName)}<span class="sub">${esc(a.specialization)}</span></td>
+        <td><span class="pill ${a.status.toLowerCase()}">${cap(a.status)}</span></td>
+        <td class="actions">${actions}</td></tr>`;
+    }).join('') + '</tbody></table>';
+}
+
+function renderPatients() {
+  if (!state.patients.length) {
+    $('#patientTable').innerHTML = '<p class="empty">No patients yet. Register the first patient using the form.</p>';
+    return;
+  }
+  $('#patientTable').innerHTML = `<table class="data"><thead><tr>
+      <th>ID</th><th>Patient</th><th>Reason for visit</th><th>Status</th><th class="num">Amount due</th><th></th>
+    </tr></thead><tbody>` +
+    state.patients.map((p) => {
+      const status = p.admitted
+        ? `<span class="pill admitted">Admitted since ${fmtDate(p.admitDate, SHORT)}</span>`
+        : '<span class="pill">Outpatient</span>';
+      let actions;
+      if (p.admitted) {
+        actions = `<button class="btn small primary" data-act="bill" data-id="${p.id}">Bill and discharge</button>`;
+      } else {
+        actions = `<button class="btn small" data-act="admit" data-id="${p.id}">Admit</button>`;
+        if (p.pending > 0) actions += `<button class="btn small primary" data-act="bill" data-id="${p.id}">Generate bill</button>`;
+      }
+      return `<tr><td>${p.id}</td>
+        <td><strong>${esc(p.name)}</strong><span class="sub">${p.age} years, ${esc(p.gender)}, ${esc(p.phone)}</span></td>
+        <td>${esc(p.condition)}</td><td>${status}</td>
+        <td class="num">${p.pending > 0 ? inr(p.pending) : 'Nil'}</td>
+        <td class="actions">${actions}</td></tr>`;
+    }).join('') + '</tbody></table>';
+}
+
+function renderDoctors() {
+  const slots = state.dash.slots.length;
+  $('#doctorTable').innerHTML = `<table class="data"><thead><tr>
+      <th>ID</th><th>Doctor</th><th>Specialization</th><th class="num">Consultation fee</th><th class="num">Booked today</th>
+    </tr></thead><tbody>` +
+    state.doctors.map((doc) => {
+      const n = state.appointments.filter((a) => a.doctorId === doc.id &&
+        a.date === state.dash.today && a.status !== 'CANCELLED').length;
+      return `<tr><td>${doc.id}</td><td><strong>${esc(doc.name)}</strong><span class="sub">${esc(doc.phone)}</span></td>
+        <td>${esc(doc.specialization)}</td><td class="num">${inr(doc.fee)}</td>
+        <td class="num">${n} of ${slots} slots</td></tr>`;
+    }).join('') + '</tbody></table>';
+}
+
+function renderBills() {
+  if (!state.bills.length) {
+    $('#billTable').innerHTML = '<p class="empty">No bills yet. Generate a bill from the Patients page and it will appear here.</p>';
+    return;
+  }
+  $('#billTable').innerHTML = `<table class="data"><thead><tr>
+      <th>Bill</th><th>Date</th><th>Patient</th><th class="num">Consultations</th><th class="num">Ward stay</th><th class="num">Total</th><th></th>
+    </tr></thead><tbody>` +
+    state.bills.map((b) => `<tr><td>${b.id}</td><td>${fmtDate(b.date, SHORT)}</td>
+      <td>${esc(b.patientName)}<span class="sub">Patient ID ${b.patientId}</span></td>
+      <td class="num">${b.consultations ? inr(b.consultationCharges) : 'None'}</td>
+      <td class="num">${b.wardDays ? inr(b.wardCharges) : 'None'}</td>
+      <td class="num"><strong>${inr(b.total)}</strong></td>
+      <td class="actions"><button class="btn small" data-act="receipt" data-id="${b.id}">View receipt</button></td></tr>`).join('') +
+    '</tbody></table>';
+}
+
+function showReceipt(b) {
+  const lines = [];
+  if (b.consultations) lines.push([`Consultations (${b.consultations})`, inr(b.consultationCharges)]);
+  if (b.wardDays) lines.push([`Ward stay (${b.wardDays} ${b.wardDays === 1 ? 'day' : 'days'} at ${inr(state.dash.wardRate)})`, inr(b.wardCharges)]);
+  $('#receiptBody').innerHTML =
+    `<p class="meta">Bill ${b.id}, issued ${fmtDate(b.date, { day: 'numeric', month: 'short', year: 'numeric' })}
+       to ${esc(b.patientName)} (patient ID ${b.patientId}).</p>
+     <dl>${lines.map(([k, v]) => `<div class="line"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}
+       <div class="line total"><dt>Total</dt><dd>${inr(b.total)}</dd></div></dl>`;
+  $('#receiptDialog').showModal();
+}
+
+/* ---------- booking dialog ---------- */
+function openBooking(pre = {}) {
+  const f = $('#bookForm').elements;
+  $('#bookError').textContent = '';
+  f.patientId.innerHTML = '<option value="">Choose a patient</option>' +
+    state.patients.map((p) => `<option value="${p.id}">${esc(p.name)} (ID ${p.id})</option>`).join('');
+  f.doctorId.innerHTML = '<option value="">Choose a doctor</option>' +
+    state.doctors.map((d) => `<option value="${d.id}">${esc(d.name)}, ${esc(d.specialization)}</option>`).join('');
+  f.time.innerHTML = state.dash.slots.map((t) => `<option>${t}</option>`).join('');
+  f.date.min = state.dash.today;
+  f.date.value = state.date < state.dash.today ? state.dash.today : state.date;
+  if (pre.doctorId) f.doctorId.value = pre.doctorId;
+  if (pre.time) f.time.value = pre.time;
+  $('#bookDialog').showModal();
+}
+
+$('#bookForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(e.target));
+  try {
+    const res = await api.post('/api/appointments', data);
+    $('#bookDialog').close();
+    state.date = data.date;
+    toast(res.message, 'ok');
+    await load();
+  } catch (err) {
+    $('#bookError').textContent = err.message;
+  }
+});
+
+$('#bookForm').addEventListener('change', () => { $('#bookError').textContent = ''; });
+
+/* ---------- register patient ---------- */
+$('#patientForm').addEventListener('input', () => { $('#patientError').textContent = ''; });
+$('#patientForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  try {
+    const res = await api.post('/api/patients', Object.fromEntries(new FormData(form)));
+    $('#patientError').textContent = '';
+    form.reset();
+    toast(res.message, 'ok');
+    await load();
+  } catch (err) {
+    $('#patientError').textContent = err.message;
+  }
+});
+
+/* ---------- clicks on buttons rendered by the page ---------- */
+document.addEventListener('click', async (e) => {
+  const el = e.target.closest('[data-act], [data-close]');
+  if (!el) return;
+  if (el.hasAttribute('data-close')) { el.closest('dialog').close(); return; }
+
+  const id = el.dataset.id;
+  switch (el.dataset.act) {
+    case 'slot':
+      openBooking({ doctorId: el.dataset.doctor, time: el.dataset.time });
+      break;
+    case 'complete':
+    case 'cancel':
+      await act('/api/appointments/status', { id, action: el.dataset.act });
+      break;
+    case 'admit':
+      await act('/api/admit', { patientId: id });
+      break;
+    case 'bill': {
+      const p = state.patients.find((x) => String(x.id) === id);
+      const question = p.admitted
+        ? `Bill ${p.name} ${inr(p.pending)} and discharge them from the ward?`
+        : `Generate a bill of ${inr(p.pending)} for ${p.name}?`;
+      if (!confirm(question)) break;
+      const res = await act('/api/bill', { patientId: id });
+      if (res) showReceipt(res.bill);
+      break;
+    }
+    case 'receipt':
+      showReceipt(state.bills.find((b) => String(b.id) === id));
+      break;
+  }
+});
+
+/* ---------- day board controls ---------- */
+function shiftDay(n) {
+  const d = new Date(state.date + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  state.date = toISO(d);
+  renderSchedule();
+}
+$('#prevDay').addEventListener('click', () => shiftDay(-1));
+$('#nextDay').addEventListener('click', () => shiftDay(1));
+$('#todayBtn').addEventListener('click', () => { state.date = state.dash.today; renderSchedule(); });
+$('#boardDate').addEventListener('change', (e) => { if (e.target.value) { state.date = e.target.value; renderSchedule(); } });
+$('#openBooking').addEventListener('click', () => openBooking());
+
+/* ---------- navigation by #hash ---------- */
+function route() {
+  const views = ['schedule', 'patients', 'doctors', 'bills'];
+  const wanted = location.hash.slice(1);
+  const name = views.includes(wanted) ? wanted : 'schedule';
+  document.querySelectorAll('.view').forEach((s) => { s.hidden = s.id !== 'view-' + name; });
+  document.querySelectorAll('.rail nav a').forEach((a) => {
+    const on = a.dataset.view === name;
+    a.classList.toggle('active', on);
+    if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+  });
+}
+window.addEventListener('hashchange', route);
+
+route();
+load();
+</script>
+</body>
+</html>
